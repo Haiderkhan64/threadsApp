@@ -1,7 +1,9 @@
+import VideoCall from "@/components/video-call/VideoCall";
+
 const page = () => {
   return (
-    <div className="text-light-1">
-      <h1>Messages</h1>
+    <div className="">
+      <VideoCall />
     </div>
   );
 };

@@ -25,6 +25,11 @@ export const sidebarLinks = [
     label: "Communities",
   },
   {
+    imgURL: "/assets/massage.svg",
+    route: "/massages",
+    label: "massages",
+  },
+  {
     imgURL: "/assets/user.svg",
     route: "/profile",
     label: "Profile",
