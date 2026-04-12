@@ -1,30 +1,31 @@
-// "use client"
 import ThreadCard from "@/components/carde/ThreadCard";
 import { fetchPost } from "@/lib/actions/thread.action";
 import { currentUser } from "@clerk/nextjs";
 
 export default async function Home() {
-  let page = "page's";
-  const result = await fetchPost();
-  const User = await currentUser();
+  const user = await currentUser();
+  // Pass clerk ID so the feed includes community posts for joined communities
+  const result = await fetchPost(1, 20, user?.id);
+
   return (
     <>
       <h1 className="head-text text-left">Home</h1>
       <section className="mt-9 flex flex-col gap-10">
         {result.posts.length === 0 ? (
-          <h1 className="No-result">No Thread Found</h1>
+          <p className="no-result">No threads yet. Join communities or follow people!</p>
         ) : (
-          result.posts.map((post) => (
+          result.posts.map((post: any) => (
             <ThreadCard
               key={post._id}
               id={post._id}
-              currentUserId={User?.id || ""}
-              parenId={post.parentId}
-              comments={post.children}
+              currentUserId={user?.id ?? ""}
+              parentId={post.parentId}
+              comments={post.children ?? []}
               createdAt={post.createdAt}
-              community={post.community}
+              community={post.community ?? null}
               author={post.author}
               content={post.text}
+              images={post.images ?? []}
             />
           ))
         )}

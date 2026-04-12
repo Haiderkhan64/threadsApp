@@ -1,51 +1,98 @@
-import ProfileHeader from "@/components/shared/ProfileHeader";
-import { profileTabs } from "@/constants";
-import { fetchUser, fetchUsers } from "@/lib/actions/user.actions";
-import { currentUser } from "@clerk/nextjs";
+// app/(root)/search/page.tsx
+
 import { redirect } from "next/navigation";
-import Image from "next/image";
+import { currentUser } from "@clerk/nextjs";
+import type { Metadata } from "next";
+import { Suspense } from "react";
+
+import SearchInput from "@/components/shared/SearchInput";
+import { fetchUser, fetchUsers } from "@/lib/actions/user.actions";
+import type { FetchUsersResult } from "@/lib/actions/user.actions";
 import UserCard from "@/components/carde/UserCard";
 
-const page = async () => {
-  const user = await currentUser();
-  if (!user) return null;
 
-  const userInfo = await fetchUser(user.id);
-  if (!userInfo?.onboarded) redirect("/onboarding");
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-  const result = await fetchUsers({
-    userId: user.id,
-    searchString: "",
-    pageSize: 25,
-    pageNo: 1,
-    sortBy: "desc",
-  });
+interface SearchPageProps {
+  searchParams: { q?: string; page?: string };
+}
 
-  return (
-    <section>
-      <h1 className="text-light-1 head-text mb-10">Search</h1>;
-      <div className="mt-14 flex-col gap-9">
-        {result?.users.length === 0 ? (
-          <p className="no-users">No Users Found</p>
-        ) : (
-          <>
-            {result?.users.map((person: any) => {
-              return (
-                <UserCard
-                  key={person.id}
-                  id={person.id}
-                  name={person.name}
-                  userName={person.username}
-                  ImgUrl={person.image}
-                  personType="User"
-                />
-              );
-            })}
-          </>
-        )}
-      </div>
-    </section>
-  );
+// ─── Metadata ─────────────────────────────────────────────────────────────────
+
+export const metadata: Metadata = {
+  title: "Search · Thread",
+  description: "Find and connect with other users on Thread.",
 };
 
-export default page;
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default async function SearchPage({ searchParams }: SearchPageProps) {
+  const user = await currentUser();
+  if (!user) redirect("/sign-in");
+
+  // Both fetches are independent — run in parallel
+  const [userInfo, result] = await Promise.all([
+    fetchUser(user.id),
+    fetchUsers({
+      userId: user.id,
+      searchString: searchParams.q ?? "",
+      pageNumber: Number(searchParams.page ?? 1),
+      pageSize: 25,
+      sortBy: "desc",
+    }),
+  ]);
+
+  if (!userInfo?.onboarded) redirect("/onboarding");
+
+  return (
+    <section className="flex flex-col gap-10">
+      <h1 className="head-text text-light-1">Search</h1>
+
+      {/*
+        SearchInput uses useRouter — it must be a Client Component.
+        Wrapping in Suspense is required when a client component
+        calls useSearchParams() inside a Server Component tree.
+      */}
+      <Suspense>
+        <SearchInput />
+      </Suspense>
+
+      <UserResults users={result.users} searchQuery={searchParams.q} />
+    </section>
+  );
+}
+
+// ─── Results sub-component ────────────────────────────────────────────────────
+
+interface UserResultsProps {
+  users: FetchUsersResult["users"];
+  searchQuery?: string;
+}
+
+function UserResults({ users, searchQuery }: UserResultsProps) {
+  if (users.length === 0) {
+    return (
+      <p className="no-result">
+        {searchQuery
+          ? `No users found for "${searchQuery}"`
+          : "No users found"}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-9" role="list">
+      {users.map((person) => (
+        <li key={person.id}>
+          <UserCard
+            id={person.id}
+            name={person.name}
+            userName={person.username}
+            imgUrl={person.image}
+            personType="User"
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
