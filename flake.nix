@@ -51,8 +51,8 @@
             export REDIS_URL="''${REDIS_URL:-redis://127.0.0.1:6379}"
             export PORT="''${PORT:-3000}"
             export NODE_ENV="''${NODE_ENV:-development}"
-            export UPLOADTHING_TOKEN="''${UPLOADTHING_TOKEN:-}"
-            export CLERK_SECRET_KEY="''${CLERK_SECRET_KEY:-}"
+            # export UPLOADTHING_TOKEN="''${UPLOADTHING_TOKEN:-}"
+            # export CLERK_SECRET_KEY="''${CLERK_SECRET_KEY:-}"
 
             # Start MongoDB via Docker if not running
             start_mongo() {
