@@ -6,7 +6,8 @@
 
 <p>A full-stack social platform with real-time chat, WebRTC video calls, and community spaces.<br/>Built on Next.js 14, a hand-rolled WebSocket server, Redis pub/sub, and MongoDB.</p>
 
-[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)](https://nextjs.org) [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org) [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongoosejs.com) [![Redis](https://img.shields.io/badge/Redis-pub%2Fsub-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io) [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_video-333333?style=flat-square)](https://webrtc.org) [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](#license)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)](https://nextjs.org) [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org) [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongoosejs.com) [![Redis](https://img.shields.io/badge/Redis-pub%2Fsub-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io) [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_video-333333?style=flat-square)](https://webrtc.org) 
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
 
 <p><strong>No Pusher. No Twilio. No Firebase. Every real time primitive is owned.</strong></p>
 
@@ -298,4 +299,16 @@ This is a stateful Node.js process. It does not run on serverless platforms.
 
 ## License
 
-MIT
+Copyright 2026 Haider Khan
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
