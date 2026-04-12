@@ -1,26 +1,92 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import Community from "../models/community.model";
-import User from "../models/user.model";
-import { ConnectedToDB } from "../mongoose";
-import { FilterQuery, SortOrder } from "mongoose";
-import Thread from "../models/thread.model";
+import { FilterQuery, SortOrder, Types } from "mongoose";
 
-export async function fetchUser(userId: string) {
+import { ConnectedToDB } from "@/lib/mongoose";
+import Community from "@/lib/models/community.model";
+import User from "@/lib/models/user.model";
+import Thread from "@/lib/models/thread.model";
+
+// ─── Shared Types ─────────────────────────────────────────────────────────────
+
+export interface PopulatedUser {
+  _id: string; // ✅ string after serialization
+  id: string;
+  name: string;
+  username: string;
+  image: string;
+  bio: string;
+  onboarded: boolean;
+  threads: string[]; // ✅ string[]
+  communities: PopulatedCommunityRef[];
+}
+
+export interface PopulatedCommunityRef {
+  _id: string;
+  id: string;
+  name: string;
+  image: string;
+}
+
+export interface UserListItem {
+  id: string;
+  name: string;
+  username: string;
+  image: string;
+}
+
+export interface FetchUsersResult {
+  users: UserListItem[];
+  isNext: boolean;
+}
+
+export interface ActivityReply {
+  _id: string;
+  text: string;
+  parentId: string;
+  author: {
+    _id: string;
+    name: string;
+    image: string;
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Next.js Server Components cannot serialize ObjectId / Date values.
+ * JSON round-trip is the safest way to strip all Mongoose-specific types.
+ */
+function serialize<T>(doc: unknown): T {
+  return JSON.parse(JSON.stringify(doc)) as T;
+}
+
+// ─── fetchUser ────────────────────────────────────────────────────────────────
+
+export async function fetchUser(userId: string): Promise<PopulatedUser | null> {
   try {
-    ConnectedToDB();
+    await ConnectedToDB();
 
-    return await User.findOne({ id: userId }).populate({
-      path: "communities",
-      model: Community,
-    });
-  } catch (error: any) {
-    throw new Error(`Failed to fetch user: ${error.message}`);
+    const doc = await User.findOne({ id: userId })
+      .populate({
+        path: "communities",
+        model: Community,
+        select: "_id id name image",
+      })
+      .lean();
+
+    if (!doc) return null;
+    return serialize<PopulatedUser>(doc);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch user: ${message}`);
   }
 }
 
-interface Params {
+// ─── updateUser ───────────────────────────────────────────────────────────────
+
+export interface UpdateUserParams {
   userId: string;
   username: string;
   name: string;
@@ -36,9 +102,9 @@ export async function updateUser({
   path,
   username,
   image,
-}: Params): Promise<void> {
+}: UpdateUserParams): Promise<void> {
   try {
-    ConnectedToDB();
+    await ConnectedToDB();
 
     await User.findOneAndUpdate(
       { id: userId },
@@ -55,127 +121,183 @@ export async function updateUser({
     if (path === "/profile/edit") {
       revalidatePath(path);
     }
-  } catch (error: any) {
-    throw new Error(`Failed to create/update user: ${error.message}`);
-  }
-}
-
-export async function fetchUserPost(userId: string) {
-  try {
-    ConnectedToDB();
-
-    // Find all threads authored by the user with the given userId
-    const threads = await User.findOne({ id: userId }).populate({
-      path: "threads",
-      model: Thread,
-      populate: [
-        {
-          path: "community",
-          model: Community,
-          select: "name id image _id", // Select the "name" and "_id" fields from the "Community" model
-        },
-        {
-          path: "children",
-          model: Thread,
-          populate: {
-            path: "author",
-            model: User,
-            select: "name image id", // Select the "name" and "_id" fields from the "User" model
-          },
-        },
-      ],
-    });
-    return threads;
   } catch (error) {
-    console.error("Error fetching user threads:", error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to update user: ${message}`);
   }
 }
 
-// Almost similar to Thead (search + pagination) and Community (search + pagination)
+// ─── fetchUserPosts ───────────────────────────────────────────────────────────
+
+export interface PopulatedUserWithThreads extends Omit<PopulatedUser, "threads"> {
+  threads: PopulatedUserThread[];
+}
+
+export interface PopulatedUserThread {
+  _id: string;
+  text: string;
+  parentId: string | null;
+  createdAt: string;
+  community: PopulatedCommunityRef | null;
+  children: {
+    _id: string;
+    text: string;
+    author: {
+      id: string;
+      name: string;
+      image: string;
+    };
+  }[];
+}
+
+export async function fetchUserPosts(
+  userId: string
+): Promise<PopulatedUserWithThreads | null> {
+  try {
+    await ConnectedToDB();
+
+    const doc = await User.findOne({ id: userId })
+      .populate({
+        path: "threads",
+        model: Thread,
+        populate: [
+          {
+            path: "community",
+            model: Community,
+            select: "_id id name image",
+          },
+          {
+            path: "children",
+            model: Thread,
+            populate: {
+              path: "author",
+              model: User,
+              select: "_id id name image",
+            },
+          },
+        ],
+      })
+      .lean();
+
+    if (!doc) return null;
+    return serialize<PopulatedUserWithThreads>(doc);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch user posts: ${message}`);
+  }
+}
+
+// ─── fetchUsers ───────────────────────────────────────────────────────────────
+
+export interface FetchUsersParams {
+  userId: string;
+  searchString?: string;
+  pageNumber?: number;
+  pageSize?: number;
+  sortBy?: SortOrder;
+}
+
 export async function fetchUsers({
   userId,
   searchString = "",
   pageNumber = 1,
   pageSize = 20,
   sortBy = "desc",
-}: {
-  userId: string;
-  searchString?: string;
-  pageNumber?: number;
-  pageSize?: number;
-  sortBy?: SortOrder;
-}) {
+}: FetchUsersParams): Promise<FetchUsersResult> {
   try {
-    ConnectedToDB();
+    await ConnectedToDB();
 
-    // Calculate the number of users to skip based on the page number and page size.
     const skipAmount = (pageNumber - 1) * pageSize;
 
-    // Create a case-insensitive regular expression for the provided search string.
-    const regex = new RegExp(searchString, "i");
-
-    // Create an initial query object to filter users.
     const query: FilterQuery<typeof User> = {
-      id: { $ne: userId }, // Exclude the current user from the results.
+      id: { $ne: userId },
     };
 
-    // If the search string is not empty, add the $or operator to match either username or name fields.
-    if (searchString.trim() !== "") {
+    if (searchString.trim()) {
+      const regex = new RegExp(searchString.trim(), "i");
       query.$or = [
         { username: { $regex: regex } },
         { name: { $regex: regex } },
       ];
     }
 
-    // Define the sort options for the fetched users based on createdAt field and provided sort order.
-    const sortOptions = { createdAt: sortBy };
+    const [totalCount, rawUsers] = await Promise.all([
+      User.countDocuments(query),
+      User.find(query)
+        .sort({ createdAt: sortBy })
+        .skip(skipAmount)
+        .limit(pageSize)
+        .select("_id id name username image")
+        .lean()
+        .exec(),
+    ]);
 
-    const usersQuery = User.find(query)
-      .sort(sortOptions)
-      .skip(skipAmount)
-      .limit(pageSize);
+    const users = serialize<UserListItem[]>(rawUsers);
 
-    // Count the total number of users that match the search criteria (without pagination).
-    const totalUsersCount = await User.countDocuments(query);
-
-    const users = await usersQuery.exec();
-
-    // Check if there are more users beyond the current page.
-    const isNext = totalUsersCount > skipAmount + users.length;
-
-    return { users, isNext };
+    return {
+      users,
+      isNext: totalCount > skipAmount + users.length,
+    };
   } catch (error) {
-    console.error("Error fetching users:", error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch users: ${message}`);
   }
 }
 
-export async function fetchActivities(userId: string) {
+// ─── fetchActivities ──────────────────────────────────────────────────────────
+
+export async function fetchActivities(
+  userId: string // MongoDB _id as string  e.g. "65f3a..."
+): Promise<ActivityReply[]> {
   try {
-    ConnectedToDB();
+    await ConnectedToDB();
 
-    // Find all threads created by the user
-    const userThreads = await Thread.find({ author: userId });
+    // Guard: only convert to ObjectId if it looks like one
+    let authorObjectId: Types.ObjectId;
+    try {
+      authorObjectId = new Types.ObjectId(userId);
+    } catch {
+      throw new Error(`fetchActivities: invalid userId "${userId}"`);
+    }
 
-    // Collect all the child thread ids (replies) from the 'children' field of each user thread
-    const childThreadIds = userThreads.reduce((acc, userThread) => {
-      return acc.concat(userThread.children);
-    }, []);
+    const replies = await Thread.aggregate([
+      { $match: { author: authorObjectId } },
+      { $unwind: "$children" },
+      {
+        $lookup: {
+          from: "threads",
+          localField: "children",
+          foreignField: "_id",
+          as: "childThread",
+        },
+      },
+      { $unwind: "$childThread" },
+      { $match: { "childThread.author": { $ne: authorObjectId } } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "childThread.author",
+          foreignField: "_id",
+          as: "childThread.author",
+        },
+      },
+      { $unwind: "$childThread.author" },
+      { $replaceRoot: { newRoot: "$childThread" } },
+      {
+        $project: {
+          _id: 1,
+          text: 1,
+          parentId: 1,
+          "author._id": 1,
+          "author.name": 1,
+          "author.image": 1,
+        },
+      },
+    ]);
 
-    // Find and return the child threads (replies) excluding the ones created by the same user
-    const replies = await Thread.find({
-      _id: { $in: childThreadIds },
-      author: { $ne: userId }, // Exclude threads authored by the same user
-    }).populate({
-      path: "author",
-      model: User,
-      select: "name image _id",
-    });
-
-    return replies;
+    return serialize<ActivityReply[]>(replies);
   } catch (error) {
-    console.error("Error fetching replies: ", error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to fetch activities: ${message}`);
   }
 }

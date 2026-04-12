@@ -3,13 +3,14 @@ import Image from "next/image";
 import { sidebarLinks } from "@/constants";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 
 const BottomBar = () => {
   let router = useRouter();
   let pathname = usePathname();
+  const { userId } = useAuth();
   return (
     <section className="bottombar">
-      {/* <div className="flex w-full flex-1 flex gap-8 px-6"> */}
       <div className="bottombar_container">
         {sidebarLinks.map((link) => {
           let isActive =
@@ -27,10 +28,7 @@ const BottomBar = () => {
                 width={24}
                 height={24}
               />
-
-              <p
-                className="text-subtle-medium text-light-1
-                 max-sm:hidden">
+              <p className="text-subtle-medium text-light-1 max-sm:hidden">
                 {link.label.split(/\s+./)[0]}
               </p>
             </Link>

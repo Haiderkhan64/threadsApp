@@ -159,3 +159,59 @@
 .comment-form_btn {
   @apply rounded-3xl bg-primary-500 px-8 py-2 !text-small-regular text-light-1 max-xs:w-full !important;
 }
+
+.thread-chat {
+  display: flex;
+  flex-direction: column;
+  color: aliceblue;
+  background-color: rgb(0, 0, 0);
+  justify-content: space-between;
+  height: 84vh;
+}
+
+.thread-chat-top-bar {
+  height: 100px;
+  border: 2px solid black;
+}
+
+.thread-chat-chat {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-color: #09090a;
+  /* align-items: center; */
+}
+
+.thread-chat-top-bar {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.thread-chat-top-bar-img {
+  margin-left: 10px;
+  border-radius: 25px;
+}
+
+.thread-chat-top-bar div {
+  margin-left: 13px;
+}
+
+.thread-chat-top-bar h5 {
+  color: rgb(127, 129, 130);
+}
+
+.chat-chard {
+  color: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid rgb(178, 159, 214);
+  border-radius: 18px;
+  margin: 15px;
+}
+
+.chat-chard p {
+  margin: 15px;
+}

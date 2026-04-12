@@ -16,8 +16,6 @@ export function formatDateString(dateString: string) {
     month: "short",
     day: "numeric",
   };
-  console.log(options);
-  console.log(options.dayPeriod);
 
   const date = new Date(dateString);
   const formattedDate = date.toLocaleDateString(undefined, options);

@@ -26,8 +26,8 @@ export const sidebarLinks = [
   },
   {
     imgURL: "/assets/massage.svg",
-    route: "/massages",
-    label: "massages",
+    route: "/messages",
+    label: "Messages",
   },
   {
     imgURL: "/assets/user.svg",
