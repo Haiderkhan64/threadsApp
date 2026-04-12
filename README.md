@@ -12,6 +12,11 @@
 <p><strong>No Pusher. No Twilio. No Firebase. Every real time primitive is owned.</strong></p>
 
 </div>
+---
+## Demo
+
+https://github.com/user-attachments/assets/57b5bde2-af99-4c8e-ae8b-750afb0622c8
+---
 
 ---
 
