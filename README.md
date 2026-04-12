@@ -15,7 +15,7 @@
 ---
 ## Demo
 
-https://github.com/user-attachments/assets/57b5bde2-af99-4c8e-ae8b-750afb0622c8
+![demo](https://github.com/user-attachments/assets/57b5bde2-af99-4c8e-ae8b-750afb0622c8)
 ---
 
 ---
