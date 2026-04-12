@@ -24,6 +24,12 @@ const threadSchema = new mongoose.Schema({
       ref: "Thread",
     },
   ],
+  // ── Image support ──────────────────────────────────────────────────────────
+  images: [
+    {
+      type: String, // UploadThing URLs
+    },
+  ],
 });
 
 const Thread = mongoose.models.Thread || mongoose.model("Thread", threadSchema);
