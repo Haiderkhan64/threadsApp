@@ -160,7 +160,7 @@ export async function fetchThread(threadId: string) {
       .exec();
 
     if (!thread) return null;
-    return serialize(thread);
+    return serialize<Record<string, any>>(thread);
   } catch (err) {
     console.error("Error fetching thread:", err);
     throw new Error("Unable to fetch thread");
