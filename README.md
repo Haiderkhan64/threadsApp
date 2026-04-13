@@ -6,10 +6,10 @@
 
 <p>A full-stack social platform with real-time chat, WebRTC video calls, and community spaces.<br/>Built on Next.js 14, a hand-rolled WebSocket server, Redis pub/sub, and MongoDB.</p>
 
-[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)](https://nextjs.org) [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org) [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongoosejs.com) [![Redis](https://img.shields.io/badge/Redis-pub%2Fsub-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io) [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_video-333333?style=flat-square)](https://webrtc.org) 
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)](https://nextjs.org) [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org) [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongoosejs.com) [![Redis](https://img.shields.io/badge/Redis-pub%2Fsub-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io) [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_video-333333?style=flat-square)](https://webrtc.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
 
-<p><strong>No Pusher. No Twilio. No Firebase. Every real time primitive is owned.</strong></p>
+<p><strong>No Pusher. No Twilio. No Firebase. Every real-time primitive is owned.</strong></p>
 
 </div>
 
@@ -53,12 +53,14 @@ Browser
                     ├─ /ws/chat/<roomId>/
                     │    └─ Redis pub/sub → two-stage fan-out across sockets
                     └─ /ws/video_call/
-                         └─ Signaling relay → WebRTC P2P
+                         └─ Direct in-process relay → WebRTC P2P signaling
 ```
 
-**Chat uses Redis pub/sub** because the in-memory room registry (`Map<roomId, Set<WebSocket>>`) only works within a single Node process. The fan-out is two-stage: every incoming message is published to Redis, which broadcasts to all Node instances; each instance then fans out to its own local WebSocket connections for that room. Every message is also written to MongoDB with a 30-day TTL index — auto-deleted by the database, no cron needed. Message status (`delivered`, `read`) is also persisted to MongoDB so it survives reconnects.
+**Chat uses Redis pub/sub** because the in-memory room registry (`Map<roomId, Set<WebSocket>>`) only works within a single Node process. The fan-out is two-stage: every incoming message is published to Redis, which broadcasts to all Node instances; each instance then fans out to its own local WebSocket connections for that room. Every message is also written to MongoDB with a 30-day TTL index — auto-deleted by the database, no cron needed. Message status (`delivered`, `read`) is persisted to MongoDB so it survives reconnects and is included in the history replay on reconnection.
 
-**Video uses WebRTC** because 1-to-1 calls don't need a media server. The signaling layer relays `call-initiate`, `call-answer`, `ice-candidate`, `ice-restart`, `call-declined`, `call-end`, and `call-unavailable` between two clients, stamping `from: registeredUserId` on every relay. Once the P2P connection is established, the server is completely out of the media path. The tradeoff is that symmetric NAT traversal requires TURN — configured via env vars with a public fallback.
+**Video signaling does not use Redis.** The server maintains a `Map<userId, WebSocket>` (`videoSockets`) entirely in process memory. Signaling messages (`call-initiate`, `call-answer`, `ice-candidate`, etc.) are relayed synchronously by looking up the target socket directly — no pub/sub hop. This means video signaling is **not multi-instance safe**: if two users are connected to different Node processes, the relay will fail. For most deployments a single instance is sufficient; if you need to scale out, you must add sticky sessions or a consistent-hash router in front of the signaling path. The server code subscribes to a Redis `"video"` channel for forward-compatibility, but the current relay path never publishes to it.
+
+Once the WebRTC P2P connection is established, the server is completely out of the media path. The tradeoff is that symmetric NAT traversal requires TURN — configured via env vars with a public fallback.
 
 ---
 
@@ -159,22 +161,25 @@ Three things that matter:
 
 **2. Exactly-once rendering.** A `Set<string>` of seen message IDs lives in a component ref. History replay and live delivery can race on reconnect — the set deduplicates silently.
 
-**3. Reconnect with history.** The client uses exponential backoff (`1000 * 2^attempt`, capped at 30s). On every new connection (including reconnects), the server replays the last 50 messages from MongoDB before any live events arrive.
+**3. Reconnect with history.** The client uses exponential backoff (`1000 * 2^attempt`, capped at 30s). On every new connection (including reconnects), the server replays the last 50 messages from MongoDB — including their `status` field — before any live events arrive.
 
 Message flow:
 
 ```
-Client                    Server               Redis
-  │── send message ──────► │── save to Mongo ───►│
-  │                        │── setex msg:* ─────►│
-  │◄── message_confirmed ──│                     │
-  │                        │ publish "chat" ──►  │
-  │                        │◄─ sub receives ─────│
-  │                        │── fan-out to room   │
-  │◄─── (other clients) ───│                     │
+Client                    Server                    Redis
+  │── send message ──────► │
+  │                        │── pub.setex msg:* ──────►│  (30-day delivery buffer)
+  │                        │── WsMessage.create ────  │   MongoDB
+  │                        │── pub.publish "chat" ───►│
+  │◄── message_confirmed ──│                          │
+  │                        │◄─ sub receives ──────────│
+  │                        │── fan-out to room        │
+  │◄─── (other clients) ───│
 ```
 
-**Message status lifecycle.** `sent` is set when MongoDB write completes. When the recipient's client receives a message, it sends a `delivered` event; when the user views it, it sends a `read` event. Both update MongoDB via `WsMessage.findOneAndUpdate` and fan out to the sender via Redis pub/sub so the sender's UI can show check marks in real time.
+> **Note:** Redis `setex` and the MongoDB write both complete before the pub/sub fan-out. `message_confirmed` is sent to the caller *after* `pub.publish` — meaning other clients in the room may receive the message a few microseconds before the sender's optimistic bubble is confirmed. In practice this is invisible, but worth knowing if you're debugging race conditions.
+
+**Message status lifecycle.** `sent` is set when the MongoDB write completes. When the recipient's client receives a message, it sends a `delivered` event; when the user views it, it sends a `read` event. Both update MongoDB via `WsMessage.findOneAndUpdate` and fan out to the sender via Redis pub/sub so the sender's UI can show check marks in real time. Status is included in history replay, so check marks survive reconnects.
 
 Typing indicators (`typing`) are the only truly ephemeral event — published to Redis, never written to MongoDB.
 
@@ -182,7 +187,9 @@ Typing indicators (`typing`) are the only truly ephemeral event — published to
 
 ## How the video call works
 
-The signaling server holds a `Map<userId, WebSocket>`. Every browser registers its Clerk user ID on connect. Messages are relayed directly to the target user ID — the server stamps `from: registeredUserId` on each relay but does not inspect the WebRTC SDP or ICE payloads themselves.
+The signaling server holds a `Map<userId, WebSocket>` (`videoSockets`) in process memory. Every browser registers its Clerk user ID on connect. Signaling messages are relayed **directly** to the target socket by `videoSockets.get(targetId)` — there is no Redis hop in this path. The server stamps `from: registeredUserId` on each relay but does not inspect the WebRTC SDP or ICE payloads themselves.
+
+> **Scaling caveat:** Because `videoSockets` is in-memory per process, signaling only works if both users are connected to the **same Node instance**. For multi-instance deployments you need sticky sessions or a consistent-hash router on the `/ws/video_call/` path. The server subscribes to a Redis `"video"` channel for future use, but the current relay path does not publish to it.
 
 **Full signaling protocol:**
 
@@ -199,14 +206,14 @@ The signaling server holds a `Map<userId, WebSocket>`. Every browser registers i
 | `call-unavailable` | server → caller | Target socket not found or not open |
 
 ```
-Caller                Server (relay)               Callee
-  │── register ──────────► │ ◄──────── register ───────│
-  │── call-initiate ──────►│ ──── call-initiate ──────►│
-  │                        │ ◄─── call-answer ─────────│
-  │◄─── call-answer ───────│                           │
-  │── ice-candidate ──────►│ ──── ice-candidate ──────►│
-  │                        │                           │
-  │            [P2P media — server is out]             │
+Caller                Server (relay, in-process)           Callee
+  │── register ──────────► │ ◄──────────── register ───────│
+  │── call-initiate ──────►│ ────── call-initiate ────────►│
+  │                        │ ◄───── call-answer ───────────│
+  │◄─── call-answer ───────│                               │
+  │── ice-candidate ──────►│ ────── ice-candidate ────────►│
+  │                        │                               │
+  │              [P2P media — server is out of the path]   │
 ```
 
 ICE failure triggers automatic ICE restart (up to 2 attempts before teardown). A 5-second timer also triggers restart if the connection stays in `disconnected` state. Camera acquisition retries 3 times with 500ms backoff to handle the device-busy race that happens on rapid tab focus. If the camera is unavailable, it degrades to audio-only rather than blocking the call.
@@ -285,7 +292,7 @@ Users with no memberships see only public posts. Community content is gated — 
 
 **Conversation** — `participants: [ObjectId, ObjectId]`, `lastMessage`, `lastMessageAt`. Exists only for the messages list preview. The two-participant constraint is enforced at query time in `getOrCreateConversation` (`$size: 2`), not at the schema level.
 
-**Message** — defined in `server.ts` (not in `lib/models/`), collection `"messages"`. Fields: `id`, `sender`, `senderName`, `content`, `room_id`, `timestamp`, `status` (`sent` | `delivered` | `read`), `expiresAt`. Two indexes: `{ room_id, timestamp }` for history queries, `{ expiresAt }` TTL for auto-expiry after 30 days.
+**Message** — defined in `server.ts` (not in `lib/models/`), collection `"messages"`. Fields: `id`, `sender`, `senderName`, `content`, `room_id`, `timestamp`, `status` (`sent` | `delivered` | `read`), `expiresAt`. Two indexes: `{ room_id, timestamp }` for history queries, `{ expiresAt }` TTL for auto-expiry after 30 days. The `status` field is included in history replay so read-receipt state survives reconnects.
 
 ---
 
@@ -295,7 +302,9 @@ This is a stateful Node.js process. It does not run on serverless platforms.
 
 **Works on:** Railway, Fly.io, Render, any VM.
 
-**Multi-instance:** Redis pub/sub handles chat fan-out correctly across instances — each instance subscribes to the `"chat"` channel and fans out to its own local WebSocket connections. Video signaling (`videoSockets` map) is in-memory per instance — you need sticky sessions or consistent hash routing for signaling to reach the right process. For most use cases a single instance is sufficient.
+**Multi-instance — chat:** Redis pub/sub handles chat fan-out correctly across instances. Each instance subscribes to the `"chat"` channel and fans out only to its own local WebSocket connections for that room.
+
+**Multi-instance — video signaling:** The `videoSockets` map is in-memory per instance. Signaling only reaches the right socket if both peers are on the **same instance**. You need sticky sessions (e.g. `SERVERID` cookie-based affinity on Railway/Fly) or a consistent-hash router on `/ws/video_call/` before scaling beyond one replica. For most use cases a single instance is sufficient.
 
 **Message expiry:** MongoDB auto-deletes messages after 30 days via the TTL index on `expiresAt`. No background worker needed.
 
