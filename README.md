@@ -141,7 +141,7 @@ npm run dev
 To stop the Docker containers:
 
 ```bash
-cleanup_services
+stop-services
 ```
 
 ### Production
