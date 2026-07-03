@@ -56,11 +56,11 @@ Browser
                          └─ Direct in-process relay → WebRTC P2P signaling
 ```
 
-**Chat uses Redis pub/sub** because the in-memory room registry (`Map<roomId, Set<WebSocket>>`) only works within a single Node process. The fan-out is two-stage: every incoming message is published to Redis, which broadcasts to all Node instances; each instance then fans out to its own local WebSocket connections for that room. Every message is also written to MongoDB with a 30-day TTL index — auto-deleted by the database, no cron needed. Message status (`delivered`, `read`) is persisted to MongoDB so it survives reconnects and is included in the history replay on reconnection.
+**Chat uses Redis pub/sub** because the in-memory room registry (`Map<roomId, Set<WebSocket>>`) only works within a single Node process. The fan-out is two-stage: every incoming message is published to Redis, which broadcasts to all Node instances; each instance then fans out to its own local WebSocket connections for that room. Every message is also written to MongoDB with a 30-day TTL index auto-deleted by the database, no cron needed. Message status (`delivered`, `read`) is persisted to MongoDB so it survives reconnects and is included in the history replay on reconnection.
 
-**Video signaling does not use Redis.** The server maintains a `Map<userId, WebSocket>` (`videoSockets`) entirely in process memory. Signaling messages (`call-initiate`, `call-answer`, `ice-candidate`, etc.) are relayed synchronously by looking up the target socket directly — no pub/sub hop. This means video signaling is **not multi-instance safe**: if two users are connected to different Node processes, the relay will fail. For most deployments a single instance is sufficient; if you need to scale out, you must add sticky sessions or a consistent-hash router in front of the signaling path. The server code subscribes to a Redis `"video"` channel for forward-compatibility, but the current relay path never publishes to it.
+**Video signaling does not use Redis.** The server maintains a `Map<userId, WebSocket>` (`videoSockets`) entirely in process memory. Signaling messages (`call-initiate`, `call-answer`, `ice-candidate`, etc.) are relayed synchronously by looking up the target socket directly no pub/sub hop. This means video signaling is **not multi-instance safe**: if two users are connected to different Node processes, the relay will fail. For most deployments a single instance is sufficient; if you need to scale out, you must add sticky sessions or a consistent-hash router in front of the signaling path. The server code subscribes to a Redis `"video"` channel for forward-compatibility, but the current relay path never publishes to it.
 
-Once the WebRTC P2P connection is established, the server is completely out of the media path. The tradeoff is that symmetric NAT traversal requires TURN — configured via env vars with a public fallback.
+Once the WebRTC P2P connection is established, the server is completely out of the media path. The tradeoff is that symmetric NAT traversal requires TURN configured via env vars with a public fallback.
 
 ---
 
@@ -113,9 +113,9 @@ REDIS_URL=redis://127.0.0.1:6379
 UPLOADTHING_SECRET=sk_live_...
 UPLOADTHING_APP_ID=...
 
-# WebRTC TURN (optional — falls back through self-hosted → public STUN/TURN if omitted)
+# WebRTC TURN (optional falls back through self-hosted → public STUN/TURN if omitted)
 NEXT_PUBLIC_METERED_API_KEY=...
-# — or self-hosted TURN —
+# or self-hosted TURN
 NEXT_PUBLIC_TURN_HOST=your.turn.server
 NEXT_PUBLIC_TURN_USER=username
 NEXT_PUBLIC_TURN_CREDENTIAL=password
@@ -125,7 +125,7 @@ NEXT_PUBLIC_TURN_CREDENTIAL=password
 
 ```bash
 npm install
-npm run dev         # starts server.ts with tsx watch — Next.js + WS on :3000
+npm run dev         # starts server.ts with tsx watch Next.js + WS on :3000
 ```
 
 ### With Nix (zero-setup option)
@@ -159,9 +159,9 @@ Three things that matter:
 
 **1. Optimistic UI.** The sender sees their message immediately with `status: "sending"`. The server responds with `message_confirmed` carrying the real server ID. The client reconciles via `tempId`.
 
-**2. Exactly-once rendering.** A `Set<string>` of seen message IDs lives in a component ref. History replay and live delivery can race on reconnect — the set deduplicates silently.
+**2. Exactly-once rendering.** A `Set<string>` of seen message IDs lives in a component ref. History replay and live delivery can race on reconnect the set deduplicates silently.
 
-**3. Reconnect with history.** The client uses exponential backoff (`1000 * 2^attempt`, capped at 30s). On every new connection (including reconnects), the server replays the last 50 messages from MongoDB — including their `status` field — before any live events arrive.
+**3. Reconnect with history.** The client uses exponential backoff (`1000 * 2^attempt`, capped at 30s). On every new connection (including reconnects), the server replays the last 50 messages from MongoDB including their `status` field before any live events arrive.
 
 Message flow:
 
@@ -177,7 +177,7 @@ Client                    Server                    Redis
   │◄─── (other clients) ───│
 ```
 
-> **Note:** Redis `setex` and the MongoDB write both complete before the pub/sub fan-out. `message_confirmed` is sent to the caller *after* `pub.publish` — meaning other clients in the room may receive the message a few microseconds before the sender's optimistic bubble is confirmed. In practice this is invisible, but worth knowing if you're debugging race conditions.
+> **Note:** Redis `setex` and the MongoDB write both complete before the pub/sub fan-out. `message_confirmed` is sent to the caller *after* `pub.publish` meaning other clients in the room may receive the message a few microseconds before the sender's optimistic bubble is confirmed. In practice this is invisible, but worth knowing if you're debugging race conditions.
 
 **Message status lifecycle.** `sent` is set when the MongoDB write completes. When the recipient's client receives a message, it sends a `delivered` event; when the user views it, it sends a `read` event. Both update MongoDB via `WsMessage.findOneAndUpdate` and fan out to the sender via Redis pub/sub so the sender's UI can show check marks in real time. Status is included in history replay, so check marks survive reconnects.
 
@@ -213,7 +213,7 @@ Caller                Server (relay, in-process)           Callee
   │◄─── call-answer ───────│                               │
   │── ice-candidate ──────►│ ────── ice-candidate ────────►│
   │                        │                               │
-  │              [P2P media — server is out of the path]   │
+  │              [P2P media server is out of the path]   │
 ```
 
 ICE failure triggers automatic ICE restart (up to 2 attempts before teardown). A 5-second timer also triggers restart if the connection stays in `disconnected` state. Camera acquisition retries 3 times with 500ms backoff to handle the device-busy race that happens on rapid tab focus. If the camera is unavailable, it degrades to audio-only rather than blocking the call.
@@ -236,7 +236,7 @@ The home feed is not global. `fetchPost` resolves the current user's joined comm
 }
 ```
 
-Users with no memberships see only public posts. Community content is gated — that's the point of communities.
+Users with no memberships see only public posts. Community content is gated that's the point of communities.
 
 ---
 
@@ -278,21 +278,21 @@ Users with no memberships see only public posts. Community content is gated — 
     └── uploadthings.ts              # UploadThing configuration
 ```
 
-> **Note on join/leave actions:** Two implementations exist side by side — `community.action.ts` handles MongoDB only, `membership.action.ts` additionally syncs with Clerk organizations. `JoinLeaveButton` uses the former; `JoinCommunityButton` uses the latter. Consolidation is a known TODO.
+> **Note on join/leave actions:** Two implementations exist side by side `community.action.ts` handles MongoDB only, `membership.action.ts` additionally syncs with Clerk organizations. `JoinLeaveButton` uses the former; `JoinCommunityButton` uses the latter. Consolidation is a known TODO.
 
 ---
 
 ## Data models
 
-**User** — Clerk `id`, `username`, `name`, `image`, `bio`, `onboarded`, refs to threads and communities.
+**User** Clerk `id`, `username`, `name`, `image`, `bio`, `onboarded`, refs to threads and communities.
 
-**Thread** — `text`, `author`, `community` (null = public), `parentId` (null = top-level), `children`, `images` (UploadThing CDN URLs — up to 4 per post).
+**Thread** `text`, `author`, `community` (null = public), `parentId` (null = top-level), `children`, `images` (UploadThing CDN URLs up to 4 per post).
 
-**Community** — unique `username` slug, `name`, `image`, `bio`, `createdBy`, `members[]`, `threads[]`. Creator is always a member and cannot leave — only delete.
+**Community** unique `username` slug, `name`, `image`, `bio`, `createdBy`, `members[]`, `threads[]`. Creator is always a member and cannot leave only delete.
 
-**Conversation** — `participants: [ObjectId, ObjectId]`, `lastMessage`, `lastMessageAt`. Exists only for the messages list preview. The two-participant constraint is enforced at query time in `getOrCreateConversation` (`$size: 2`), not at the schema level.
+**Conversation** `participants: [ObjectId, ObjectId]`, `lastMessage`, `lastMessageAt`. Exists only for the messages list preview. The two-participant constraint is enforced at query time in `getOrCreateConversation` (`$size: 2`), not at the schema level.
 
-**Message** — defined in `server.ts` (not in `lib/models/`), collection `"messages"`. Fields: `id`, `sender`, `senderName`, `content`, `room_id`, `timestamp`, `status` (`sent` | `delivered` | `read`), `expiresAt`. Two indexes: `{ room_id, timestamp }` for history queries, `{ expiresAt }` TTL for auto-expiry after 30 days. The `status` field is included in history replay so read-receipt state survives reconnects.
+**Message** defined in `server.ts` (not in `lib/models/`), collection `"messages"`. Fields: `id`, `sender`, `senderName`, `content`, `room_id`, `timestamp`, `status` (`sent` | `delivered` | `read`), `expiresAt`. Two indexes: `{ room_id, timestamp }` for history queries, `{ expiresAt }` TTL for auto-expiry after 30 days. The `status` field is included in history replay so read-receipt state survives reconnects.
 
 ---
 
@@ -302,9 +302,9 @@ This is a stateful Node.js process. It does not run on serverless platforms.
 
 **Works on:** Railway, Fly.io, Render, any VM.
 
-**Multi-instance — chat:** Redis pub/sub handles chat fan-out correctly across instances. Each instance subscribes to the `"chat"` channel and fans out only to its own local WebSocket connections for that room.
+**Multi-instance chat:** Redis pub/sub handles chat fan-out correctly across instances. Each instance subscribes to the `"chat"` channel and fans out only to its own local WebSocket connections for that room.
 
-**Multi-instance — video signaling:** The `videoSockets` map is in-memory per instance. Signaling only reaches the right socket if both peers are on the **same instance**. You need sticky sessions (e.g. `SERVERID` cookie-based affinity on Railway/Fly) or a consistent-hash router on `/ws/video_call/` before scaling beyond one replica. For most use cases a single instance is sufficient.
+**Multi-instance video signaling:** The `videoSockets` map is in-memory per instance. Signaling only reaches the right socket if both peers are on the **same instance**. You need sticky sessions (e.g. `SERVERID` cookie-based affinity on Railway/Fly) or a consistent-hash router on `/ws/video_call/` before scaling beyond one replica. For most use cases a single instance is sufficient.
 
 **Message expiry:** MongoDB auto-deletes messages after 30 days via the TTL index on `expiresAt`. No background worker needed.
 
